@@ -56,21 +56,51 @@ const todoApp = combineReducers({
     visibilityFilter: visibilityFilter,
 });
 
-const store = createStore(todoApp);
-
-const FilterLink = ({filter, currentFilter, children, onFilterClick}) => {
-    if (filter === currentFilter) {
+const FilterLink = ({active, children, onFilterClick}) => {
+    if (active) {
         return (<span>{children}</span>)
     } else {
         return (
             <a href='#'
                 onClick = {e => {
                     e.preventDefault();
-                    onFilterClick(filter);
+                    onFilterClick();
                 }}
             >
                 {children}
             </a>
+        )
+    }
+}
+
+class FilterLinkContainer extends React.Component {
+    componentDidMount() {
+        this.unsubscribe = this.props.store.subscribe(() => 
+            this.forceUpdate()
+        );
+    }
+
+    componentWillUnmount() {
+        this.unsubscribe();
+    }
+    render() {
+        const props = this.props;
+        const state = props.store.getState();
+
+        return (
+            <FilterLink 
+                active = {
+                    props.filter === state.visibilityFilter
+                }
+                onFilterClick = {() =>
+                    props.store.dispatch({
+                        type: 'SET_VISIBILITY_FILTER',
+                        filter: props.filter
+                    })
+                }
+            >
+            {props.children}
+            </FilterLink>
         )
     }
 }
@@ -87,13 +117,6 @@ const TodoItem = ({onClick, completed, text}) => {
     )
 }
 
-const handleTodoClick = (id) => {
-    store.dispatch({
-        type:'TOGGLE_TODO',
-        id: id,
-    })
-}
-
 const filterTodos = (todos, visibilityFilter) => {
     switch (visibilityFilter) {
         case 'SHOW_ALL':
@@ -105,14 +128,18 @@ const filterTodos = (todos, visibilityFilter) => {
     }
 }
 
-const AddTodo = ({onAddClick}) => {
+const AddTodo = ({onAddClick, store}) => {
     return(
         <div>
             <input ref={node => {
                     this.input = node;
                 }} />
             <button onClick={() => {
-                onAddClick(this.input);
+                store.dispatch({
+                    type: 'ADD_TODO',
+                    id: nextTodoId++,
+                    text: this.input.value,
+                 });
                 this.input.value = '';
             }}>
                 Add Todo
@@ -121,68 +148,84 @@ const AddTodo = ({onAddClick}) => {
     )
 }
 
-const VisibilityFilters = ({visibilityFilter, onFilterClick}) => {
+const Footer = ({store}) => {
     return(
         <p>
             Show:
             {' '}
-            <FilterLink filter = 'SHOW_ALL' currentFilter = {visibilityFilter} onFilterClick = {onFilterClick}>
+            <FilterLinkContainer store={store} filter = 'SHOW_ALL'>
                 All
-            </FilterLink>
+            </FilterLinkContainer>
 
             {' '}
-            <FilterLink filter = 'SHOW_ACTIVE' currentFilter = {visibilityFilter} onFilterClick = {onFilterClick}>
+            <FilterLinkContainer store={store} filter = 'SHOW_ACTIVE'>
                 Active
-            </FilterLink>
+            </FilterLinkContainer>
 
             {' '}
-            <FilterLink filter = 'SHOW_COMPLETED' currentFilter = {visibilityFilter} onFilterClick = {onFilterClick}>
+            <FilterLinkContainer store={store} filter = 'SHOW_COMPLETED'>
                 Completed
-            </FilterLink>
+            </FilterLinkContainer>
         </p>
     )
 }
 
+const TodoList = ({filteredTodos, handleClick}) => {
+    return (
+        <ul>
+            {filteredTodos.map(todo => 
+                <TodoItem onClick={() => handleClick(todo.id)} completed={todo.completed} text={todo.text}/>
+            )}
+        </ul>
+    )
+}
+
+class TodoListContainer extends React.Component {
+    handleTodoClick = (id) => {
+        this.props.store.dispatch({
+            type:'TOGGLE_TODO',
+            id: id,
+        })
+    }
+    
+    componentDidMount() {
+        this.unsubscribe = this.props.store.subscribe(() => 
+        this.forceUpdate()
+        );
+    }
+
+    componentWillUnmount() {
+        this.unsubscribe();
+    }
+    
+    render() {
+        var filteredTodos = filterTodos(this.props.store.getState().todos, this.props.store.getState().visibilityFilter);
+        
+        return (
+            <TodoList 
+                filteredTodos={filteredTodos}
+                handleClick={(id) => {
+                    this.handleTodoClick(id)
+                }}
+            />
+        )
+    }
+}
+
 let nextTodoId = 7;
 
-const TodoApp = ({todos, visibilityFilter}) => {
-        var filteredTodos = filterTodos(todos, visibilityFilter);
-
+const TodoApp = ({store}) => {
         return (
-        <div>
-            <AddTodo
-                onAddClick={(input) => {
-                    store.dispatch({
-                        type: 'ADD_TODO',
-                        id: nextTodoId++,
-                        text: input.value,
-                    });
-                }}
-            />
-            <ul>
-                {filteredTodos.map(todo => 
-                    <TodoItem onClick={() => handleTodoClick(todo.id)} completed={todo.completed} text={todo.text}/>
-                )}
-            </ul>
-            <VisibilityFilters 
-                visibilityFilter={visibilityFilter}
-                onFilterClick={(filter) => {
-                    store.dispatch({
-                        type: 'SET_VISIBILITY_FILTER',
-                        filter
-                    })
-                }}
-            />
-        </div>
+            <div>
+                <AddTodo store={store}/>
+                <TodoListContainer store={store}/>
+                <Footer store={store}/>
+            </div>
         )
 };
 
+ReactDOM.render(<TodoApp store={createStore(todoApp)}/>,
+document.getElementById('root'));
 
 
-const render = () => {
-    ReactDOM.render(<TodoApp {...store.getState()}/>, document.getElementById('root'));
-    registerServiceWorker();
-}
 
-store.subscribe(render);
-render();
